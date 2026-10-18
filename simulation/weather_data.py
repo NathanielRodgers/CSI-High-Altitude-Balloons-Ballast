@@ -67,6 +67,7 @@ class WeatherProvider:
             "v": "VGRD",
             "temperature": "TMP",
             "geopotential_height": "HGT",
+            "relative_humidity": "RH",
         }
 
         for name, grib_variable in variables.items():
@@ -82,6 +83,7 @@ class WeatherProvider:
                     "VGRD": "v",
                     "TMP": "t",
                     "HGT": "gh",
+                    "RH": "r",                  # NEW
                 }[grib_variable]
 
                 if variable_name not in ds.data_vars:
@@ -145,7 +147,14 @@ class WeatherProvider:
             profiles["temperature"],
             dtype=float,
         )
-
+        temp_profile = np.asarray(
+            profiles["temperature"],
+            dtype=float,
+        )
+        rh_profile = np.asarray(                # NEW
+            profiles["relative_humidity"],
+            dtype=float,
+        )
         # GFS HGT on pressure levels is geopotential height in meters.
         # Sort profiles by increasing height for interpolation.
         valid = (
@@ -153,12 +162,14 @@ class WeatherProvider:
             & np.isfinite(u_profile)
             & np.isfinite(v_profile)
             & np.isfinite(temp_profile)
+            & np.isfinite(rh_profile)           # NEW
         )
 
         heights = heights[valid]
         u_profile = u_profile[valid]
         v_profile = v_profile[valid]
         temp_profile = temp_profile[valid]
+        rh_profile = rh_profile[valid]          # NEW
         pressure_profile = pressure_hpa[valid]
 
         if len(heights) < 2:
@@ -171,6 +182,7 @@ class WeatherProvider:
         u_profile = u_profile[order]
         v_profile = v_profile[order]
         temp_profile = temp_profile[order]
+        rh_profile = rh_profile[order]          # NEW
         pressure_profile = pressure_profile[order]
 
         # Interpolate wind and temperature against geopotential height.
@@ -198,6 +210,20 @@ class WeatherProvider:
         )
         pressure_pa = float(np.exp(log_pressure))
 
+        relative_humidity = float(
+            np.clip(np.interp(altitude_m, heights, rh_profile), 0.0, 100.0)
+        )
+
+        # Virtual temperature (temperature adjusted for humidity).
+        # Saturation vapor pressure via the Bolton (1980) formula.
+        temp_c = temperature_k - 273.15
+        e_sat = 611.2 * math.exp(17.67 * temp_c / (temp_c + 243.5))  # Pa
+        e = (relative_humidity / 100.0) * e_sat                      # Pa
+        mixing_ratio = 0.622 * e / (pressure_pa - e)                 # kg/kg
+        virtual_temperature_k = temperature_k * (
+            (1.0 + mixing_ratio / 0.622) / (1.0 + mixing_ratio)
+        )
+
         # Ideal-gas approximation for dry air.
         R_d = 287.05  # J/(kg K)
         density = pressure_pa / (R_d * temperature_k)
@@ -223,6 +249,9 @@ class WeatherProvider:
             "wind_direction_from_deg": wind_direction,
             "temperature_k": temperature_k,
             "temperature_c": temperature_k - 273.15,
+            "relative_humidity_percent": relative_humidity,              # NEW
+            "virtual_temperature_k": virtual_temperature_k,              # NEW
+            "virtual_temperature_c": virtual_temperature_k - 273.15,     # NEW
             "pressure_pa": pressure_pa,
             "density_kg_m3": density,
         }
