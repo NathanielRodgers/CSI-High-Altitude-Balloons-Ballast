@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_538726e681add1bb0a83c6c89b3ef56e {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_538726e681add1bb0a83c6c89b3ef56e" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_538726e681add1bb0a83c6c89b3ef56e = L.map(
+                "map_538726e681add1bb0a83c6c89b3ef56e",
+                {
+                    center: [40.7128, -74.006],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 12,
+  "zoomControl": true,
+  "preferCanvas": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_42430ff9b88de942dfb5bbe5fe9d7be4 = L.tileLayer(
+                "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                {
+  "minZoom": 0,
+  "maxZoom": 18,
+  "maxNativeZoom": 18,
+  "noWrap": false,
+  "attribution": "Tiles \u0026copy; Esri",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_42430ff9b88de942dfb5bbe5fe9d7be4.addTo(map_538726e681add1bb0a83c6c89b3ef56e);
+        
+    
+            var poly_line_b68acfbeebbfcf0d4b2c5c23e121bc82 = L.polyline(
+                [[40.7128, -74.006], [40.712817966223504, -74.00594074374118], [40.71283593244701, -74.00588148746635], [40.71285389867051, -74.00582223117554], [40.71287186489401, -74.00576297486874], [40.712889831117515, -74.00570371854596], [40.71290779734102, -74.00564446220719], [40.71292576356452, -74.00558520585243], [40.71294372978802, -74.00552594948167], [40.712961696011526, -74.00546669309492]],
+                {"bubblingMouseEvents": true, "color": "red", "dashArray": null, "dashOffset": null, "fill": false, "fillColor": "red", "fillOpacity": 0.2, "fillRule": "evenodd", "lineCap": "round", "lineJoin": "round", "noClip": false, "opacity": 1.0, "smoothFactor": 1.0, "stroke": true, "weight": 4}
+            ).addTo(map_538726e681add1bb0a83c6c89b3ef56e);
+        
+    
+            poly_line_b68acfbeebbfcf0d4b2c5c23e121bc82.bindTooltip(
+                `<div>
+                     Balloon Trajectory
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+            var marker_9818cee8e92db63aa07332aef1aedecc = L.marker(
+                [40.7128, -74.006],
+                {
+}
+            ).addTo(map_538726e681add1bb0a83c6c89b3ef56e);
+        
+    
+            var icon_219ef1c151126eb883477d8913cfcb3c = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "green",
+  "iconColor": "white",
+  "icon": "play",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+            marker_9818cee8e92db63aa07332aef1aedecc.bindTooltip(
+                `<div>
+                     Launch Point
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_9818cee8e92db63aa07332aef1aedecc.setIcon(icon_219ef1c151126eb883477d8913cfcb3c);
+            
+    
+            var marker_244189d92a7e3ee05cd7b9d3acc18a0f = L.marker(
+                [40.712961696011526, -74.00546669309492],
+                {
+}
+            ).addTo(map_538726e681add1bb0a83c6c89b3ef56e);
+        
+    
+            var icon_c706dc989cc3c8ecf418fec89f3e4e05 = L.AwesomeMarkers.icon(
+                {
+  "markerColor": "red",
+  "iconColor": "white",
+  "icon": "flag",
+  "prefix": "glyphicon",
+  "extraClasses": "fa-rotate-0",
+}
+            );
+        
+    
+        var popup_405f741b6bea0a330eeb74c645ebbc0c = L.popup({
+  "maxWidth": "100%",
+});
+
+        
+            
+                var html_d19e9c9bdd05f4142aa527c12f78704a = $(`<div id="html_d19e9c9bdd05f4142aa527c12f78704a" style="width: 100.0%; height: 100.0%;">Final Altitude: 1927.66m</div>`)[0];
+                popup_405f741b6bea0a330eeb74c645ebbc0c.setContent(html_d19e9c9bdd05f4142aa527c12f78704a);
+            
+        
+
+        marker_244189d92a7e3ee05cd7b9d3acc18a0f.bindPopup(popup_405f741b6bea0a330eeb74c645ebbc0c)
+        ;
+
+        
+    
+    
+            marker_244189d92a7e3ee05cd7b9d3acc18a0f.bindTooltip(
+                `<div>
+                     Final Point
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+                marker_244189d92a7e3ee05cd7b9d3acc18a0f.setIcon(icon_c706dc989cc3c8ecf418fec89f3e4e05);
+            
+    
+            map_538726e681add1bb0a83c6c89b3ef56e.fitBounds(
+                [[40.7128, -74.006], [40.712817966223504, -74.00594074374118], [40.71283593244701, -74.00588148746635], [40.71285389867051, -74.00582223117554], [40.71287186489401, -74.00576297486874], [40.712889831117515, -74.00570371854596], [40.71290779734102, -74.00564446220719], [40.71292576356452, -74.00558520585243], [40.71294372978802, -74.00552594948167], [40.712961696011526, -74.00546669309492]],
+                {}
+            );
+        
+</script>
+</html>
