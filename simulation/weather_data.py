@@ -217,14 +217,25 @@ class WeatherProvider:
         return row, row_fraction, column, column_fraction
 
     def _column(self, latitude, longitude):
-        """Vertical profile of every field at the nearest grid point."""
+        """
+        Vertical profile of every field at a point, interpolated
+        bilinearly in latitude and longitude from the four surrounding
+        grid points.
+        """
         row, row_fraction, column, column_fraction = self._grid_position(
             latitude, longitude
         )
-        row += round(row_fraction)
-        column += round(column_fraction)
+        weights = np.array([
+            [(1 - row_fraction) * (1 - column_fraction),
+             (1 - row_fraction) * column_fraction],
+            [row_fraction * (1 - column_fraction),
+             row_fraction * column_fraction],
+        ])
         return {
-            name: field[:, row, column].astype(float)
+            name: (
+                field[:, row:row + 2, column:column + 2].astype(float)
+                * weights
+            ).sum(axis=(1, 2))
             for name, field in self.fields.items()
         }
 
@@ -251,7 +262,8 @@ class WeatherProvider:
         Get approximate weather conditions at a geographic location
         and altitude.
 
-        The nearest horizontal grid point is selected first.
+        Each pressure level is first interpolated bilinearly from the
+        four surrounding grid points.
         Vertical interpolation is performed between pressure levels
         using geopotential heights from GFS.
 
@@ -262,7 +274,7 @@ class WeatherProvider:
         # Convert longitude to the 0-360 convention used by GFS.
         longitude = longitude % 360
 
-        # Extract vertical profiles at the nearest grid point.
+        # Vertical profiles interpolated to the point (bilinear).
         profiles = self._column(latitude, longitude)
 
         pressure_hpa = self.levels_hpa
