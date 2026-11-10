@@ -465,7 +465,10 @@ def latest_gfs_cycle(delay_hours=6):
 
 
 def select_gfs_run(launch_time):
-    """Latest published GFS run at or before launch_time (UTC)."""
+    """
+    Latest published GFS run at or before launch_time (UTC). Raises
+    ValueError if that run does not cover launch_time.
+    """
     launch_time = _as_utc_naive(launch_time)
     launch_cycle = launch_time.replace(
         hour=launch_time.hour - launch_time.hour % 6,
@@ -473,7 +476,21 @@ def select_gfs_run(launch_time):
         second=0,
         microsecond=0,
     )
-    return min(latest_gfs_cycle(), launch_cycle)
+    initialization = min(latest_gfs_cycle(), launch_cycle)
+    _check_launch_covered(launch_time, initialization)
+    return initialization
+
+
+def _check_launch_covered(launch_time, initialization):
+    """Raise ValueError unless the GFS run covers the launch time."""
+    lead_hours = (launch_time - initialization).total_seconds() / 3600
+    if not 0.0 <= lead_hours <= MAX_FORECAST_HOUR:
+        raise ValueError(
+            f"Launch time {launch_time:%Y-%m-%d %H:%M} UTC is outside GFS "
+            f"run {initialization:%Y-%m-%d %H}Z, which covers "
+            f"{initialization:%Y-%m-%d %H}Z to "
+            f"{initialization + timedelta(hours=MAX_FORECAST_HOUR):%Y-%m-%d %H}Z."
+        )
 
 
 # GFS 0.25 degree output is hourly to 120 h, then every 3 h to 384 h.
@@ -521,6 +538,7 @@ def load_weather(
     latitude=None,
     longitude=None,
     region_half_width_deg=DEFAULT_REGION_HALF_WIDTH_DEG,
+    allow_reduced_levels=False,
 ):
     """
     Select the GFS run used by get_weather() and download the forecast
@@ -529,14 +547,16 @@ def load_weather(
 
     launch_time: UTC datetime of the release (naive datetimes are taken
         as UTC). Defaults to now. The latest published GFS run at or
-        before it is used unless initialization is given.
+        before it is used unless initialization is given. Raises
+        ValueError if the run does not cover it.
     forecast_hour: forecast hour get_weather() uses when it is called
         without valid_time. Defaults to the hour of launch_time.
     latitude, longitude: centre of the region kept in memory, normally
         the launch site. None keeps the whole globe.
-
-    If the extended stratospheric levels cannot be loaded, the default
-    WeatherProvider levels are used instead.
+    allow_reduced_levels: if the extended stratospheric levels cannot
+        be loaded, use the default WeatherProvider levels (top 100 hPa,
+        about 16 km; everything above is extrapolated) instead of
+        raising an error.
     """
     global _run, _providers
 
@@ -547,6 +567,7 @@ def load_weather(
     if initialization is None:
         initialization = select_gfs_run(launch_time)
     initialization = _as_utc_naive(initialization)
+    _check_launch_covered(launch_time, initialization)
 
     if forecast_hour is None:
         default_valid_time = launch_time
@@ -582,9 +603,18 @@ def load_weather(
         if pressure_levels is not None:
             _run = None
             raise
+        if not allow_reduced_levels:
+            _run = None
+            raise RuntimeError(
+                f"Could not load the GFS extended pressure levels (up to "
+                f"5 hPa, about 36 km): {error}. The default levels stop at "
+                f"100 hPa (about 16 km), below the balloon's flight "
+                f"altitude. Pass allow_reduced_levels=True to "
+                f"load_weather() to accept that."
+            ) from error
         print(
-            f"Extended pressure levels unavailable ({error}); "
-            f"retrying with default levels."
+            f"WARNING: extended pressure levels unavailable ({error}); "
+            f"using the default levels (top 100 hPa, about 16 km)."
         )
         _run["pressure_levels"] = None
         try:
@@ -651,6 +681,10 @@ def _weather_for_hour(forecast_hour, latitude, longitude, altitude_m):
     weather["longitude"] = longitude
     weather["altitude_m"] = altitude_m
     weather["extrapolated"] = dz != 0.0
+    weather["extrapolation"] = (
+        "below" if dz < 0 else "above" if dz > 0 else None
+    )
+    weather["reduced_pressure_levels"] = _run["pressure_levels"] is None
 
     return weather
 
@@ -686,7 +720,11 @@ def get_weather(latitude, longitude, altitude_m, valid_time=None):
       - longitude returned in the same convention it was given
 
     forecast_hour is the earlier of the two forecast hours used and
-    forecast_hour_upper the later one.
+    forecast_hour_upper the later one. extrapolation is "below" or
+    "above" when altitude_m is outside the loaded pressure levels
+    (extrapolated is then True), otherwise None.
+    reduced_pressure_levels is True when load_weather() fell back to
+    the default levels.
     """
     if _run is None:
         load_weather(latitude=latitude, longitude=longitude)
@@ -723,6 +761,9 @@ def get_weather(latitude, longitude, altitude_m, valid_time=None):
         )
         weather["extrapolated"] = (
             weather["extrapolated"] or later["extrapolated"]
+        )
+        weather["extrapolation"] = (
+            weather["extrapolation"] or later["extrapolation"]
         )
 
     weather["forecast_hour_upper"] = upper
