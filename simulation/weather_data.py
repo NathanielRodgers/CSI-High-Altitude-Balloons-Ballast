@@ -19,10 +19,9 @@ class WeatherProvider:
     Pressure is in Pa.
     Density is in kg/m^3.
 
-    This initial implementation uses pressure-level data and
-    approximate altitude interpolation. Forecast time interpolation
-    and automatic selection of the latest available GFS cycle can
-    be added as the next development step.
+    One provider holds one forecast hour. Interpolation in time between
+    forecast hours and selection of the GFS cycle are done by the
+    module-level load_weather() and get_weather() below.
     """
 
     def __init__(
@@ -465,11 +464,26 @@ def select_gfs_run(launch_time):
     return min(latest_gfs_cycle(), launch_cycle)
 
 
-def _nearest_forecast_hour(lead_hours):
-    """GFS 0.25 degree output is hourly to 120 h, then every 3 h to 384 h."""
+# GFS 0.25 degree output is hourly to 120 h, then every 3 h to 384 h.
+MAX_FORECAST_HOUR = 384
+
+
+def _bracketing_forecast_hours(lead_hours):
+    """
+    Forecast hours either side of a lead time (the same hour twice when
+    the lead time falls exactly on one).
+    """
+    if not 0.0 <= lead_hours <= MAX_FORECAST_HOUR:
+        raise ValueError(
+            f"Requested time is {lead_hours:.2f} h after the GFS run "
+            f"{_run['initialization']:%Y-%m-%d %H}Z, outside the "
+            f"0-{MAX_FORECAST_HOUR} h that run covers."
+        )
     if lead_hours <= 120:
-        return max(0, round(lead_hours))
-    return min(384, 120 + 3 * round((lead_hours - 120) / 3))
+        return math.floor(lead_hours), math.ceil(lead_hours)
+    lower = 120 + 3 * math.floor((lead_hours - 120) / 3)
+    upper = lower if lower == lead_hours else lower + 3
+    return lower, upper
 
 
 def _provider_for_hour(forecast_hour):
@@ -545,7 +559,13 @@ def load_weather(
     }
 
     try:
-        provider = _provider_for_hour(_nearest_forecast_hour(lead_hours))
+        lower, upper = _bracketing_forecast_hours(lead_hours)
+    except ValueError:
+        _run = None
+        raise
+
+    try:
+        provider = _provider_for_hour(lower)
     except Exception as error:
         if pressure_levels is not None:
             _run = None
@@ -556,41 +576,28 @@ def load_weather(
         )
         _run["pressure_levels"] = None
         try:
-            provider = _provider_for_hour(_nearest_forecast_hour(lead_hours))
+            provider = _provider_for_hour(lower)
         except Exception:
             _run = None
             raise
 
+    # The second hour bracketing the launch, for interpolation in time.
+    try:
+        _provider_for_hour(upper)
+    except Exception:
+        _run = None
+        raise
+
     return provider
 
 
-def get_weather(latitude, longitude, altitude_m, valid_time=None):
+def _weather_for_hour(forecast_hour, latitude, longitude, altitude_m):
     """
-    Weather at a location and altitude for the balloon simulation.
-
-    valid_time: UTC datetime the weather should be valid at (naive
-        datetimes are taken as UTC). Defaults to the launch time given
-        to load_weather(). The nearest GFS forecast hour is used and
-        downloaded if it is not loaded yet.
-
-    Wraps WeatherProvider.get_weather() and adds:
-      - automatic loading of the latest forecast on first call
-      - extrapolation outside the pressure-level height range
-        (standard lapse rate below, isothermal above, hydrostatic
-        pressure, wind held at the nearest level)
-      - air density from virtual temperature (includes humidity)
-      - longitude returned in the same convention it was given
+    Weather from one forecast hour of the selected run, with
+    extrapolation outside the pressure-level height range and moist-air
+    density.
     """
-    if _run is None:
-        load_weather(latitude=latitude, longitude=longitude)
-
-    if valid_time is None:
-        valid_time = _run["default_valid_time"]
-    valid_time = _as_utc_naive(valid_time)
-    lead_hours = (
-        (valid_time - _run["initialization"]).total_seconds() / 3600
-    )
-    provider = _provider_for_hour(_nearest_forecast_hour(lead_hours))
+    provider = _provider_for_hour(forecast_hour)
 
     lowest, highest = provider.height_range(latitude, longitude)
     query_altitude = float(min(max(altitude_m, lowest), highest))
@@ -632,6 +639,82 @@ def get_weather(latitude, longitude, altitude_m, valid_time=None):
     weather["longitude"] = longitude
     weather["altitude_m"] = altitude_m
     weather["extrapolated"] = dz != 0.0
+
+    return weather
+
+
+# Quantities interpolated linearly in time between forecast hours; the
+# rest are derived from them afterwards.
+_TIME_INTERPOLATED_KEYS = (
+    "wind_u_m_s",
+    "wind_v_m_s",
+    "temperature_k",
+    "virtual_temperature_k",
+    "relative_humidity_percent",
+    "pressure_pa",
+)
+
+
+def get_weather(latitude, longitude, altitude_m, valid_time=None):
+    """
+    Weather at a location and altitude for the balloon simulation.
+
+    valid_time: UTC datetime the weather should be valid at (naive
+        datetimes are taken as UTC). Defaults to the launch time given
+        to load_weather(). The two GFS forecast hours either side of it
+        are interpolated linearly in time; hours not loaded yet are
+        downloaded and cached.
+
+    Wraps WeatherProvider.get_weather() and adds:
+      - automatic loading of the latest forecast on first call
+      - extrapolation outside the pressure-level height range
+        (standard lapse rate below, isothermal above, hydrostatic
+        pressure, wind held at the nearest level)
+      - air density from virtual temperature (includes humidity)
+      - longitude returned in the same convention it was given
+
+    forecast_hour is the earlier of the two forecast hours used and
+    forecast_hour_upper the later one.
+    """
+    if _run is None:
+        load_weather(latitude=latitude, longitude=longitude)
+
+    if valid_time is None:
+        valid_time = _run["default_valid_time"]
+    valid_time = _as_utc_naive(valid_time)
+    lead_hours = (
+        (valid_time - _run["initialization"]).total_seconds() / 3600
+    )
+    lower, upper = _bracketing_forecast_hours(lead_hours)
+
+    weather = _weather_for_hour(lower, latitude, longitude, altitude_m)
+
+    if upper != lower:
+        later = _weather_for_hour(upper, latitude, longitude, altitude_m)
+        weight = (lead_hours - lower) / (upper - lower)
+        for key in _TIME_INTERPOLATED_KEYS:
+            weather[key] += weight * (later[key] - weather[key])
+
+        u = weather["wind_u_m_s"]
+        v = weather["wind_v_m_s"]
+        weather["wind_speed_m_s"] = math.hypot(u, v)
+        weather["wind_direction_from_deg"] = (
+            math.degrees(math.atan2(-u, -v)) + 360
+        ) % 360
+        weather["temperature_c"] = weather["temperature_k"] - 273.15
+        weather["virtual_temperature_c"] = (
+            weather["virtual_temperature_k"] - 273.15
+        )
+        R_d = 287.05  # J/(kg K)
+        weather["density_kg_m3"] = weather["pressure_pa"] / (
+            R_d * weather["virtual_temperature_k"]
+        )
+        weather["extrapolated"] = (
+            weather["extrapolated"] or later["extrapolated"]
+        )
+
+    weather["forecast_hour_upper"] = upper
+    weather["lead_time_hours"] = lead_hours
     weather["valid_time_utc"] = valid_time.isoformat() + "Z"
 
     return weather
